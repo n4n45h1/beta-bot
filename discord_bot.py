@@ -118,7 +118,7 @@ def verify():
 
     # 1) VPN/Proxy check
     if vpn_or_proxy:
-        bot.loop.create_task(user.send(f"@{user.name}、vpn,proxyを外してから来い"))
+        bot.loop.create_task(user.send(f"@{user.name}、vpn,proxyを外してから認証をしてください。"))
         bot.loop.create_task(send_verification_log(guild, user, data, success=False))
         return jsonify({"status": "failed", "reason": "vpn_or_proxy"}), 200
 
@@ -154,15 +154,15 @@ def verify():
                 if (now - log_time) < timedelta(days=1):
                     bot.loop.create_task(user.ban(reason="Duplicate account usage from same IP within 24 hours."))
                     bot.loop.create_task(user.send(
-                        f"@{user.name}の本垢、複垢と見られるものが検出されました。"
-                        f"検出アカウント:@{user.name}、もし何かの間違いであれば@adminまで連絡してください。"
+                        f"@{user.name}、複垢と見られるものが検出されました。"
+                        f"検出アカウント:@{user.name}、もし何かの間違いであればn2zeまで連絡してください。"
                     ))
                     bot.loop.create_task(send_verification_log(guild, user, data, success=False))
                     return jsonify({"status": "failed", "reason": "duplicate_account"}), 200
                 else:
                     # Over 24 hours but still within a week => deny verification
                     bot.loop.create_task(user.send(
-                        f"@{user.name}、同じIPで1週間以内に別の認証がありました。認証できません。"
+                        f"@{user.name}、同じIPアドレスで1週間以内に別の認証がありました。認証できません。"
                     ))
                     bot.loop.create_task(send_verification_log(guild, user, data, success=False))
                     return jsonify({"status": "failed", "reason": "duplicate_ip"}), 200
