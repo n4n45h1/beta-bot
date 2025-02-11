@@ -2,25 +2,24 @@ import os
 import discord
 from discord.ext import commands
 from datetime import datetime, timedelta
+from flask import Flask, request, jsonify
+import requests
 
-# If you use local .env in dev, uncomment:
-# from dotenv import load_dotenv
-# load_dotenv()
-
+# 環境変数のロード
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 TARGET_GUILD_ID = int(os.getenv("TARGET_GUILD_ID", "0"))
+FLASK_PORT = int(os.getenv("FLASK_PORT", 5001))
 
 intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-# Store log channels for verification
+# ログチャンネルとIP使用状況の管理
 verification_log_channels = {}
-
-# Track IP usage: ip -> list of (user_id, timestamp)
 recent_ip_usage = {}
-# Store known user creation times, updated on member join or as needed
 user_account_creation = {}
+
+app = Flask(__name__)
 
 @bot.event
 async def on_ready():
@@ -48,7 +47,7 @@ async def verify(ctx, role: discord.Role):
     embed.add_field(name="Role to be assigned on success", value=role.mention, inline=False)
 
     # Replace "https://your-app.onrender.com" with your Railway domain or custom domain
-    verify_link = "https://beta-authsystem.up.railway.app"
+    verify_link = "https://beta-authsystem.up.railway.app/"
     embed.add_field(name="Verification Link", value=f"[Click here]({verify_link})", inline=False)
 
     await ctx.send(embed=embed)
@@ -100,122 +99,92 @@ async def send_verification_log(guild, user, data, success: bool):
     embed.add_field(name="Status", value="Success" if success else "Failed", inline=False)
     await channel.send(embed=embed)
 
-@bot.event
-async def on_message(message):
-    """
-    Here we can simulate or trigger final verification checks after the user
-    completes the web flow. In a real prod system, you'd likely have the web
-    server send a direct request to the bot or to a DB. For demonstration,
-    we assume a manual or simulated approach using .complete_verify.
-    
-    Usage example:
-    .complete_verify <user_id> <email> <ip> <country> <vpn_flag>,
-    e.g. .complete_verify 123456789 "someone@example.com" 8.8.8.8 "JP" False
-    """
-    if message.author == bot.user:
-        return
-    
-    if message.content.startswith(".complete_verify"):
-        try:
-            # Example format with 5 args
-            # .complete_verify user_id email ip country vpn_or_proxy
-            parts = message.content.split(maxsplit=5)
-            if len(parts) != 6:
-                await message.channel.send("Invalid format. Use .complete_verify user_id email ip country vpn_bool")
-                return
+@app.route("/verify", methods=["POST"])
+def verify():
+    data = request.json
+    user_id = int(data["user_id"])
+    email = data["email"]
+    ip = data["ip"]
+    country = data["country"]
+    vpn_or_proxy = data["vpn_or_proxy"]
 
-            _, user_id_str, email_str, ip_str, country_str, vpn_str = parts
-            user_id = int(user_id_str)
-            vpn_flag = vpn_str.lower() in ["true", "1", "yes", "on"]
-            
-            guild = bot.get_guild(TARGET_GUILD_ID)
-            if not guild:
-                await message.channel.send("Guild not found or TARGET_GUILD_ID not set.")
-                return
+    guild = bot.get_guild(TARGET_GUILD_ID)
+    if not guild:
+        return jsonify({"error": "Guild not found or TARGET_GUILD_ID not set."}), 400
 
-            user = guild.get_member(user_id)
-            if not user:
-                await message.channel.send("User not found in the guild.")
-                return
+    user = guild.get_member(user_id)
+    if not user:
+        return jsonify({"error": "User not found in the guild."}), 400
 
-            data = {
-                "email": email_str.strip('"'),
-                "ip": ip_str,
-                "country": country_str,
-                "vpn_or_proxy": vpn_flag
-            }
+    # 1) VPN/Proxy check
+    if vpn_or_proxy:
+        bot.loop.create_task(user.send(f"@{user.name}、vpn,proxyを外してから来い"))
+        bot.loop.create_task(send_verification_log(guild, user, data, success=False))
+        return jsonify({"status": "failed", "reason": "vpn_or_proxy"}), 200
 
-            # 1) VPN/Proxy check
-            if vpn_flag:
-                await user.send(f"@{user.name}、vpn,proxyを外してから来い")
-                await send_verification_log(guild, user, data, success=False)
-                return
+    # 2) If not JP => partial check for account age
+    account_age_days = (datetime.utcnow() - user.created_at).days
+    if country != "JP":
+        if account_age_days < 3:
+            bot.loop.create_task(user.send(
+                f"@{user.name}、あなたのアカウントは新しすぎるので認証されませんでした、"
+                "後日サイド認証を行ってください。"
+            ))
+            bot.loop.create_task(send_verification_log(guild, user, data, success=False))
+            return jsonify({"status": "failed", "reason": "account_age"}), 200
 
-            # 2) If not JP => partial check for account age
-            account_age_days = (datetime.utcnow() - user.created_at).days
-            if country_str != "JP":
-                if account_age_days < 3:
-                    await user.send(
-                        f"@{user.name}、あなたのアカウントは新しすぎるので認証されませんでした、"
-                        "後日サイド認証を行ってください。"
-                    )
-                    await send_verification_log(guild, user, data, success=False)
-                    return
+    # 3) Duplicate IP check within 1 week
+    now = datetime.utcnow()
+    # Remove old logs older than 7 days
+    for ip, usage_list in list(recent_ip_usage.items()):
+        new_list = [(uid, ts) for (uid, ts) in usage_list if (now - ts).days < 7]
+        if new_list:
+            recent_ip_usage[ip] = new_list
+        else:
+            del recent_ip_usage[ip]
 
-            # 3) Duplicate IP check within 1 week
-            now = datetime.utcnow()
-            # Remove old logs older than 7 days
-            for ip, usage_list in list(recent_ip_usage.items()):
-                new_list = [(uid, ts) for (uid, ts) in usage_list if (now - ts).days < 7]
-                if new_list:
-                    recent_ip_usage[ip] = new_list
+    # Check for existing usage on the same IP
+    if ip not in recent_ip_usage:
+        recent_ip_usage[ip] = []
+    else:
+        for (logged_user_id, log_time) in recent_ip_usage[ip]:
+            # If we have the same IP used by a different user in the last 7 days
+            if logged_user_id != user.id and (now - log_time).days < 7:
+                # If used in less than 24 hours, ban
+                if (now - log_time) < timedelta(days=1):
+                    bot.loop.create_task(user.ban(reason="Duplicate account usage from same IP within 24 hours."))
+                    bot.loop.create_task(user.send(
+                        f"@{user.name}の本垢、複垢と見られるものが検出されました。"
+                        f"検出アカウント:@{user.name}、もし何かの間違いであれば@adminまで連絡してください。"
+                    ))
+                    bot.loop.create_task(send_verification_log(guild, user, data, success=False))
+                    return jsonify({"status": "failed", "reason": "duplicate_account"}), 200
                 else:
-                    del recent_ip_usage[ip]
+                    # Over 24 hours but still within a week => deny verification
+                    bot.loop.create_task(user.send(
+                        f"@{user.name}、同じIPで1週間以内に別の認証がありました。認証できません。"
+                    ))
+                    bot.loop.create_task(send_verification_log(guild, user, data, success=False))
+                    return jsonify({"status": "failed", "reason": "duplicate_ip"}), 200
 
-            # Check for existing usage on the same IP
-            if ip_str not in recent_ip_usage:
-                recent_ip_usage[ip_str] = []
-            else:
-                for (logged_user_id, log_time) in recent_ip_usage[ip_str]:
-                    # If we have the same IP used by a different user in the last 7 days
-                    if logged_user_id != user.id and (now - log_time).days < 7:
-                        # If used in less than 24 hours, ban
-                        if (now - log_time) < timedelta(days=1):
-                            await user.ban(reason="Duplicate account usage from same IP within 24 hours.")
-                            await user.send(
-                                f"@{user.name}の本垢、複垢と見られるものが検出されました。"
-                                f"検出アカウント:@{user.name}、もし何かの間違いであれば@adminまで連絡してください。"
-                            )
-                            await send_verification_log(guild, user, data, success=False)
-                            return
-                        else:
-                            # Over 24 hours but still within a week => deny verification
-                            await user.send(
-                                f"@{user.name}、同じIPで1週間以内に別の認証がありました。認証できません。"
-                            )
-                            await send_verification_log(guild, user, data, success=False)
-                            return
+    # If we reach here, user passes all checks => assign a role
+    # Example role name "Verified"
+    role_to_assign = None
+    for r in guild.roles:
+        if r.name.lower() == "verified":
+            role_to_assign = r
+            break
 
-            # If we reach here, user passes all checks => assign a role
-            # Example role name "Verified"
-            role_to_assign = None
-            for r in guild.roles:
-                if r.name.lower() == "verified":
-                    role_to_assign = r
-                    break
+    if role_to_assign:
+        bot.loop.create_task(user.add_roles(role_to_assign, reason="Verification success"))
+    
+    # Log success
+    bot.loop.create_task(send_verification_log(guild, user, data, success=True))
+    # Track usage
+    recent_ip_usage[ip].append((user.id, now))
+    
+    return jsonify({"status": "success"}), 200
 
-            if role_to_assign:
-                await user.add_roles(role_to_assign, reason="Verification success")
-            
-            # Log success
-            await send_verification_log(guild, user, data, success=True)
-            # Track usage
-            recent_ip_usage[ip_str].append((user.id, now))
-            
-            await message.channel.send(f"User <@{user.id}> verified successfully.")
-        except Exception as ex:
-            await message.channel.send(f"Error: {ex}")
-
-    await bot.process_commands(message)
-
-bot.run(DISCORD_BOT_TOKEN)
+if __name__ == "__main__":
+    bot.loop.create_task(bot.start(DISCORD_BOT_TOKEN))
+    app.run(host="0.0.0.0", port=FLASK_PORT)
