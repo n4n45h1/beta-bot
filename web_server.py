@@ -14,6 +14,7 @@ DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "http://localhost:5000/callback")
 IPINFO_API_TOKEN = os.getenv("IPINFO_API_TOKEN", "")
+DISCORD_BOT_ENDPOINT = os.getenv("DISCORD_BOT_ENDPOINT", "http://localhost:5001/verify")
 
 # Simple in-memory store: "auth_records" to keep user’s data
 auth_records = {}
@@ -125,12 +126,19 @@ def collect_info():
     }
     auth_records[user_id] = record
 
-    # Decide immediate outcome for the user’s web page
-    if vpn_or_proxy:
+    # Send data to Discord bot for verification
+    data = {
+        "user_id": user_id,
+        "email": email,
+        "ip": user_ip,
+        "country": country,
+        "vpn_or_proxy": vpn_or_proxy
+    }
+    bot_resp = requests.post(DISCORD_BOT_ENDPOINT, json=data)
+    if bot_resp.status_code != 200:
         return render_template_string(failed_template)
-    else:
-        # The Discord bot will handle final checks (account age, repeated IP, etc.)
-        return render_template_string(success_template)
+
+    return render_template_string(success_template)
 
 def create_app():
     return app
