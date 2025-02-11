@@ -1,0 +1,17 @@
+{
+  "name": "discord-auth-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot for authentication with OAuth and IP verification",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^0.21.1",
+    "discord.js": "^14.0.0",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "passport": "^0.4.1",
+    "passport-discord": "^0.1.4"
+  }
+}
