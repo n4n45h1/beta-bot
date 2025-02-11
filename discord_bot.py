@@ -48,7 +48,7 @@ async def verify(ctx, role: discord.Role):
     embed.add_field(name="Role to be assigned on success", value=role.mention, inline=False)
 
     # Replace "https://your-app.onrender.com" with your Railway domain or custom domain
-    verify_link = "https://your-railway-app-url/"
+    verify_link = "https://beta-authsystem.up.railway.app"
     embed.add_field(name="Verification Link", value=f"[Click here]({verify_link})", inline=False)
 
     await ctx.send(embed=embed)
