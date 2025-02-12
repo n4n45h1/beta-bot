@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from typing import Optional
 
 class HelpCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -136,6 +137,77 @@ class HelpCommands(commands.Cog):
                     inline=False
                 )
 
+            elif command == "log":
+                embed = discord.Embed(
+                    title="ログコマンド",
+                    description="サーバーのログを記録します",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="/log",
+                    value="ログチャンネルを設定\n"
+                          "```\n"
+                          "channel: ログを送信するチャンネル\n"
+                          "action: add/remove\n"
+                          "```",
+                    inline=False
+                )
+                embed.add_field(
+                    name="記録される項目",
+                    value="```\n"
+                          "- チャンネルの作成/削除/編集\n"
+                          "- メッセージの編集/削除\n"
+                          "- 絵文字の追加/削除/編集\n"
+                          "- ロールの追加/削除/編集\n"
+                          "- メンバーのロール変更\n"
+                          "- メンバーの参加/退出\n"
+                          "- タイムアウト/キック/BAN\n"
+                          "```",
+                    inline=False
+                )
+
+            elif command == "timeout":
+                embed = discord.Embed(
+                    title="タイムアウトコマンド",
+                    description="メンバーのタイムアウトを管理します",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="/timeout",
+                    value="```\n"
+                          "user: 対象ユーザー\n"
+                          "action: 実行するアクション\n"
+                          "time: タイムアウト期間\n"
+                          "```",
+                    inline=False
+                )
+                embed.add_field(
+                    name="アクション一覧",
+                    value="```\n"
+                          "add: タイムアウトを追加\n"
+                          "forever: 無期限タイムアウト\n"
+                          "canceling: タイムアウトを解除\n"
+                          "view: 現在の状態を表示\n"
+                          "history: タイムアウト履歴\n"
+                          "remove: タイムアウト期間を短縮\n"
+                          "```",
+                    inline=False
+                )
+                embed.add_field(
+                    name="時間指定形式",
+                    value="```\n"
+                          "y: 年\n"
+                          "m: 月\n"
+                          "w: 週\n"
+                          "d: 日\n"
+                          "h: 時間\n"
+                          "m: 分\n"
+                          "s: 秒\n"
+                          "例: 1d12h30m = 1日12時間30分\n"
+                          "```",
+                    inline=False
+                )
+
             else:
                 embed = discord.Embed(
                     title="エラー",
@@ -161,6 +233,8 @@ class HelpCommands(commands.Cog):
                 name="🛡️ モデレーション",
                 value="```\n"
                       "/filter - コンテンツフィルターを設定\n"
+                      "/timeout - タイムアウトを管理\n"
+                      "/nick - ニックネームを変更\n"
                       "```",
                 inline=False
             )
@@ -168,6 +242,13 @@ class HelpCommands(commands.Cog):
                 name="📊 統計情報",
                 value="```\n"
                       "/stat - 統計情報チャンネルを作成\n"
+                      "```",
+                inline=False
+            )
+            embed.add_field(
+                name="📝 ログ管理",
+                value="```\n"
+                      "/log - ログチャンネルを設定\n"
                       "```",
                 inline=False
             )
