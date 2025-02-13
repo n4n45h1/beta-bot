@@ -1,235 +1,200 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Optional, Dict, List
-from datetime import datetime, timedelta
+from typing import Optional, List
 import re
 
 class ModerationCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.timeout_history: Dict[int, List[Dict]] = {}
 
-    def parse_time(self, time_str: str) -> Optional[timedelta]:
-        if not time_str:
-            return None
-            
-        time_units = {
-            'y': 365 * 24 * 60 * 60,  # years in seconds
-            'm': 30 * 24 * 60 * 60,   # months in seconds
-            'w': 7 * 24 * 60 * 60,    # weeks in seconds
-            'd': 24 * 60 * 60,        # days in seconds
-            'h': 60 * 60,             # hours in seconds
-            'm': 60,                   # minutes in seconds
-            's': 1                     # seconds
-        }
-
-        total_seconds = 0
-        pattern = r'(\d+)([ymwdhs])'
-        matches = re.finditer(pattern, time_str.lower())
-        
-        for match in matches:
-            value = int(match.group(1))
-            unit = match.group(2)
-            total_seconds += value * time_units[unit]
-        
-        return timedelta(seconds=total_seconds) if total_seconds > 0 else None
-
-    @app_commands.command(name="nick", description="ユーザーのニックネームを変更")
+    @app_commands.command(name="clear", description="メッセージを一括削除")
     @app_commands.describe(
-        user="対象ユーザー",
-        name="新しいニックネーム (defaultで元に戻す)"
+        amount="削除するメッセージ数 (1-100)",
+        user="特定のユーザーのメッセージのみ削除"
     )
-    @app_commands.default_permissions(manage_nicknames=True)
-    async def nick(
+    @app_commands.default_permissions(manage_messages=True)
+    async def clear(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
-        name: str
+        amount: int,
+        user: Optional[discord.Member] = None
     ):
-        if not interaction.user.guild_permissions.manage_nicknames:
-            await interaction.response.send_message("このコマンドを使用する権限がありません。", ephemeral=True)
+        if not interaction.user.guild_permissions.manage_messages:
+            await interaction.response.send_message("メッセージの管理権限が必要です！", ephemeral=True)
             return
 
-        try:
-            old_nick = user.nick or user.name
-            new_nick = None if name.lower() == "default" else name
-            await user.edit(nick=new_nick)
+        if amount < 1 or amount > 100:
+            await interaction.response.send_message("1から100の間で指定してください！", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        if user:
+            messages = []
+            async for message in interaction.channel.history(limit=100):
+                if message.author == user:
+                    messages.append(message)
+                    if len(messages) >= amount:
+                        break
             
+            if messages:
+                await interaction.channel.delete_messages(messages)
+                await interaction.followup.send(
+                    f"{user.mention} のメッセージを {len(messages)}件 削除しました。",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    f"{user.mention} の最近のメッセージは見つかりませんでした。",
+                    ephemeral=True
+                )
+        else:
+            deleted = await interaction.channel.purge(limit=amount)
+            await interaction.followup.send(
+                f"メッセージを {len(deleted)}件 削除しました。",
+                ephemeral=True
+            )
+
+    @app_commands.command(name="nuke", description="チャンネルのメッセージをすべて削除")
+    @app_commands.default_permissions(administrator=True)
+    async def nuke(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("管理者権限が必要です！", ephemeral=True)
+            return
+
+        # 確認メッセージ
+        embed = discord.Embed(
+            title="⚠️ 警告",
+            description=(
+                "このチャンネルのメッセージをすべて削除しようとしています。\n"
+                "この操作は取り消せません。続行しますか？"
+            ),
+            color=discord.Color.red()
+        )
+
+        class ConfirmView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=30)
+                self.value = None
+
+            @discord.ui.button(label="はい", style=discord.ButtonStyle.danger)
+            async def confirm(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+                self.value = True
+                self.stop()
+                await button_interaction.response.defer()
+
+            @discord.ui.button(label="いいえ", style=discord.ButtonStyle.secondary)
+            async def cancel(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+                self.value = False
+                self.stop()
+                await button_interaction.response.defer()
+
+        view = ConfirmView()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await view.wait()
+
+        if view.value:
+            # チャンネルを複製して古いチャンネルを削除
+            new_channel = await interaction.channel.clone()
+            await interaction.channel.delete()
+            
+            # 完了メッセージを送信
             embed = discord.Embed(
-                title="ニックネーム変更",
-                color=discord.Color.blue(),
-                timestamp=datetime.now()
+                title="✅ 完了",
+                description="チャンネルのメッセージをすべて削除しました。",
+                color=discord.Color.green()
             )
-            embed.add_field(name="対象ユーザー", value=user.mention)
-            embed.add_field(name="変更前", value=old_nick)
-            embed.add_field(name="変更後", value=new_nick or user.name)
+            await new_channel.send(embed=embed)
+        else:
+            await interaction.edit_original_response(
+                content="操作をキャンセルしました。",
+                embed=None,
+                view=None
+            )
+
+    @app_commands.command(name="ping", description="BOTの応答速度を表示")
+    async def ping(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🏓 Pong!",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="レイテンシ",
+            value=f"{round(self.bot.latency * 1000)}ms"
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="list", description="BANまたはKICKされたユーザーの一覧を表示")
+    @app_commands.describe(type="表示する一覧の種類")
+    @app_commands.choices(type=[
+        app_commands.Choice(name="BAN一覧", value="ban"),
+        app_commands.Choice(name="KICK一覧", value="kick")
+    ])
+    @app_commands.default_permissions(ban_members=True, kick_members=True)
+    async def list_users(
+        self,
+        interaction: discord.Interaction,
+        type: str
+    ):
+        if type == "ban" and not interaction.user.guild_permissions.ban_members:
+            await interaction.response.send_message("BANの権限が必要です！", ephemeral=True)
+            return
             
-            await interaction.response.send_message(embed=embed)
-        except:
-            await interaction.response.send_message("ニックネームの変更に失敗しました。", ephemeral=True)
-
-    @app_commands.command(name="timeout", description="ユーザーのタイムアウトを管理")
-    @app_commands.describe(
-        user="対象ユーザー",
-        action="実行するアクション",
-        time="タイムアウト期間 (例: 1d2h30m)"
-    )
-    @app_commands.default_permissions(moderate_members=True)
-    async def timeout(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        action: str,
-        time: Optional[str] = None
-    ):
-        if not interaction.user.guild_permissions.moderate_members:
-            await interaction.response.send_message("このコマンドを使用する権限がありません。", ephemeral=True)
+        if type == "kick" and not interaction.user.guild_permissions.kick_members:
+            await interaction.response.send_message("KICKの権限が必要です！", ephemeral=True)
             return
 
-        if user.id not in self.timeout_history:
-            self.timeout_history[user.id] = []
+        await interaction.response.defer(ephemeral=True)
 
-        try:
-            if action == "add":
-                if not time:
-                    await interaction.response.send_message("タイムアウト期間を指定してください。", ephemeral=True)
-                    return
-                
-                duration = self.parse_time(time)
-                if not duration:
-                    await interaction.response.send_message("無効な時間形式です。", ephemeral=True)
-                    return
-                
-                await user.timeout(duration)
-                self.timeout_history[user.id].append({
-                    'action': 'add',
-                    'duration': duration,
-                    'moderator': interaction.user.id,
-                    'timestamp': datetime.now()
-                })
-                
-                embed = discord.Embed(
-                    title="タイムアウト追加",
-                    description=f"{user.mention} をタイムアウトしました。",
-                    color=discord.Color.red()
-                )
-                embed.add_field(name="期間", value=time)
-                await interaction.response.send_message(embed=embed)
+        if type == "ban":
+            bans = [entry async for entry in interaction.guild.bans()]
+            if not bans:
+                await interaction.followup.send("BANされているユーザーはいません。", ephemeral=True)
+                return
 
-            elif action == "forever":
-                max_duration = timedelta(days=28)  # Discord's maximum timeout duration
-                await user.timeout(max_duration)
-                self.timeout_history[user.id].append({
-                    'action': 'forever',
-                    'duration': max_duration,
-                    'moderator': interaction.user.id,
-                    'timestamp': datetime.now()
-                })
-                await interaction.response.send_message(f"{user.mention} を無期限タイムアウトしました。")
-
-            elif action == "canceling":
-                await user.timeout(None)
-                self.timeout_history[user.id].append({
-                    'action': 'cancel',
-                    'moderator': interaction.user.id,
-                    'timestamp': datetime.now()
-                })
-                await interaction.response.send_message(f"{user.mention} のタイムアウトを解除しました。")
-
-            elif action == "view":
-                if user.timed_out_until:
-                    remaining = user.timed_out_until - datetime.now(user.timed_out_until.tzinfo)
-                    await interaction.response.send_message(
-                        f"{user.mention} は現在タイムアウト中です。\n"
-                        f"解除まで: {remaining.days}日 {remaining.seconds//3600}時間 "
-                        f"{(remaining.seconds//60)%60}分 {remaining.seconds%60}秒"
-                    )
-                else:
-                    await interaction.response.send_message(f"{user.mention} は現在タイムアウトされていません。")
-
-            elif action == "history":
-                if not self.timeout_history[user.id]:
-                    await interaction.response.send_message(f"{user.mention} のタイムアウト履歴はありません。")
-                    return
-                
-                embed = discord.Embed(
-                    title=f"{user.display_name} のタイムアウト履歴",
-                    color=discord.Color.blue()
-                )
-                
-                for entry in reversed(self.timeout_history[user.id][-10:]):  # Show last 10 entries
-                    moderator = interaction.guild.get_member(entry['moderator'])
-                    mod_name = moderator.display_name if moderator else "Unknown"
-                    
-                    value = f"実行者: {mod_name}\n"
-                    if 'duration' in entry:
-                        value += f"期間: {entry['duration']}\n"
-                    value += f"日時: {discord.utils.format_dt(entry['timestamp'])}"
-                    
-                    embed.add_field(
-                        name=f"アクション: {entry['action']}",
-                        value=value,
-                        inline=False
-                    )
-                
-                await interaction.response.send_message(embed=embed)
-
-            elif action == "remove":
-                if not time:
-                    await interaction.response.send_message("削除する期間を指定してください。", ephemeral=True)
-                    return
-                
-                duration = self.parse_time(time)
-                if not duration:
-                    await interaction.response.send_message("無効な時間形式です。", ephemeral=True)
-                    return
-                
-                if user.timed_out_until:
-                    new_duration = user.timed_out_until - datetime.now(user.timed_out_until.tzinfo) - duration
-                    if new_duration.total_seconds() <= 0:
-                        await user.timeout(None)
-                        await interaction.response.send_message(f"{user.mention} のタイムアウトを解除しました。")
-                    else:
-                        await user.timeout(new_duration)
-                        await interaction.response.send_message(
-                            f"{user.mention} のタイムアウト期間を {time} 短縮しました。\n"
-                            f"残り: {new_duration.days}日 {new_duration.seconds//3600}時間 "
-                            f"{(new_duration.seconds//60)%60}分 {new_duration.seconds%60}秒"
-                        )
-                else:
-                    await interaction.response.send_message(f"{user.mention} は現在タイムアウトされていません。")
-
-        except Exception as e:
-            await interaction.response.send_message(f"エラーが発生しました: {str(e)}", ephemeral=True)
-
-    @app_commands.command(name="fake-user", description="指定したユーザーになりすましてメッセージを送信")
-    @app_commands.describe(
-        user="なりすますユーザー",
-        message="送信するメッセージ"
-    )
-    @app_commands.default_permissions(manage_webhooks=True)
-    async def fake_user(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        message: str
-    ):
-        if not interaction.user.guild_permissions.manage_webhooks:
-            await interaction.response.send_message("このコマンドを使用する権限がありません。", ephemeral=True)
-            return
-
-        try:
-            webhook = await interaction.channel.create_webhook(name=f"FakeUser_{user.id}")
-            await webhook.send(
-                content=message,
-                username=user.display_name,
-                avatar_url=user.display_avatar.url
+            embed = discord.Embed(
+                title="BANされているユーザー",
+                color=discord.Color.red()
             )
-            await webhook.delete()
-            await interaction.response.send_message("メッセージを送信しました。", ephemeral=True)
-        except:
-            await interaction.response.send_message("メッセージの送信に失敗しました。", ephemeral=True)
+            
+            for ban in bans:
+                embed.add_field(
+                    name=f"{ban.user.name} ({ban.user.id})",
+                    value=f"理由: {ban.reason or '理由なし'}",
+                    inline=False
+                )
+
+        elif type == "kick":
+            # KICKの履歴はDiscord APIで直接は取得できないため、
+            # 監査ログから最近のKICKを取得
+            kicks = []
+            async for entry in interaction.guild.audit_logs(action=discord.AuditLogAction.kick):
+                if len(kicks) >= 25:  # 最大25件まで
+                    break
+                kicks.append(entry)
+
+            if not kicks:
+                await interaction.followup.send("最近KICKされたユーザーはいません。", ephemeral=True)
+                return
+
+            embed = discord.Embed(
+                title="最近KICKされたユーザー",
+                color=discord.Color.orange()
+            )
+            
+            for kick in kicks:
+                embed.add_field(
+                    name=f"{kick.target} ({kick.target.id})",
+                    value=(
+                        f"実行者: {kick.user.name}\n"
+                        f"日時: {discord.utils.format_dt(kick.created_at)}\n"
+                        f"理由: {kick.reason or '理由なし'}"
+                    ),
+                    inline=False
+                )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ModerationCommands(bot))
