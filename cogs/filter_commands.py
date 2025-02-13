@@ -18,7 +18,7 @@ class ModActionView(View):
         
         try:
             member = await interaction.guild.fetch_member(self.user_id)
-            await member.ban(reason="フィルター違反")
+            await member.ban(reason="サーバー内での違反")
             await interaction.response.send_message(f"{member.name}をBANしました。", ephemeral=True)
         except:
             await interaction.response.send_message("BANに失敗しました。", ephemeral=True)
@@ -31,7 +31,7 @@ class ModActionView(View):
         
         try:
             member = await interaction.guild.fetch_member(self.user_id)
-            await member.kick(reason="フィルター違反")
+            await member.kick(reason="サバー内での違反")
             await interaction.response.send_message(f"{member.name}をKICKしました。", ephemeral=True)
         except:
             await interaction.response.send_message("KICKに失敗しました。", ephemeral=True)
@@ -40,7 +40,7 @@ class ModActionView(View):
     async def warn_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             member = await interaction.guild.fetch_member(self.user_id)
-            await member.send(f"サーバーのルールに違反する投稿が検出されました。\n今後このような投稿は控えてください。")
+            await member.send(f"{member.name}さん、サーバーのルールに違反する投稿が検出されました。\n今後このような投稿は控えてください。")
             await interaction.response.send_message(f"{member.name}に警告DMを送信しました。", ephemeral=True)
         except:
             await interaction.response.send_message("DMの送信に失敗しました。", ephemeral=True)
@@ -143,7 +143,7 @@ class FilterCommands(commands.Cog):
             self.block_urls = value
             await interaction.response.send_message(f"URL制限を{'有効' if value else '無効'}にしました。", ephemeral=True)
 
-        elif action == "invite-url":
+        elif action == "inviteurl-block":
             if value is None:
                 await interaction.response.send_message("値を指定してください。", ephemeral=True)
                 return
@@ -196,7 +196,7 @@ class FilterCommands(commands.Cog):
 
         if violated and self.log_channel:
             embed = discord.Embed(
-                title="フィルター違反",
+                title="ルール違反",
                 description=f"違反者: {message.author.mention} (`{message.author.id}`)\n"
                            f"理由: {reason}\n"
                            f"違反回数: {self.violation_counts.get(message.author.id, 0)}",
