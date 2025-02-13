@@ -129,7 +129,7 @@ class Bot(commands.Bot):
         # Update presence
         activity = discord.Activity(
             type=discord.ActivityType.watching,
-            name=f"{len(self.guilds)} servers | /help"
+            name="n2ze | /help"
         )
         await self.change_presence(status=discord.Status.online, activity=activity)
 
