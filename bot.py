@@ -82,8 +82,8 @@ class Bot(commands.Bot):
 
             # Set rich presence
             activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name=n2ze | /help"
+                type=discord.ActivityType.listening,
+                name="n2ze | /help"
             )
             await self.change_presence(
                 status=discord.Status.online,
