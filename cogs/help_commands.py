@@ -98,41 +98,43 @@ class HelpCommands(commands.Cog):
                     inline=False
                 )
 
-            elif command == "stat":
+            elif command == "welcome":
                 embed = discord.Embed(
-                    title="統計情報コマンド",
-                    description="サーバーの統計情報を表示するチャンネルを作成",
+                    title="参加メッセージ設定",
+                    description="メンバー参加時のメッセージを管理します",
                     color=discord.Color.blue()
                 )
                 embed.add_field(
-                    name="/stat time",
-                    value="現在時刻を表示するチャンネル\n"
+                    name="/welcome set",
+                    value="チャンネルに参加メッセージを設定\n"
                           "```\n"
-                          "timezone: タイムゾーン\n"
-                          "- UTC+/-n (例: UTC+9)\n"
-                          "- 主要都市名 (例: Tokyo)\n"
+                          "channel: メッセージを送信するチャンネル\n"
+                          "message: 送信するメッセージ\n"
+                          "embed: 埋め込み表示の使用\n"
+                          "color: 埋め込みの色\n"
                           "```",
                     inline=False
                 )
                 embed.add_field(
-                    name="/stat day",
-                    value="現在の日付を表示するチャンネル\n"
+                    name="/welcome dm_set",
+                    value="DMに参加メッセージを設定\n"
                           "```\n"
-                          "timezone: タイムゾーン\n"
-                          "- UTC+/-n (例: UTC+9)\n"
-                          "- 主要都市名 (例: Tokyo)\n"
+                          "message: 送信するメッセージ\n"
+                          "embed: 埋め込み表示の使用\n"
+                          "color: 埋め込みの色\n"
                           "```",
                     inline=False
                 )
                 embed.add_field(
-                    name="メンバー統計",
+                    name="利用可能なプレースホルダー",
                     value="```\n"
-                          "/stat online_member\n"
-                          "オンラインメンバー数を表示\n\n"
-                          "/stat offline_member\n"
-                          "オフラインメンバー数を表示\n\n"
-                          "/stat member\n"
-                          "総メンバー数を表示\n"
+                          "[@user] - ユーザー名\n"
+                          "[@user.mention] - メンション\n"
+                          "[@date] - 日時\n"
+                          "[@member.count] - メンバー数\n"
+                          "[@server] - サーバー名\n"
+                          "[@invite.url] - 招待リンク\n"
+                          "[@invite.url.user] - 招待者\n"
                           "```",
                     inline=False
                 )
@@ -230,18 +232,20 @@ class HelpCommands(commands.Cog):
                 inline=False
             )
             embed.add_field(
+                name="👋 参加管理",
+                value="```\n"
+                      "/welcome - 参加メッセージを設定\n"
+                      "```",
+                inline=False
+            )
+            embed.add_field(
                 name="🛡️ モデレーション",
                 value="```\n"
                       "/filter - コンテンツフィルターを設定\n"
                       "/timeout - タイムアウトを管理\n"
                       "/nick - ニックネームを変更\n"
-                      "```",
-                inline=False
-            )
-            embed.add_field(
-                name="📊 統計情報",
-                value="```\n"
-                      "/stat - 統計情報チャンネルを作成\n"
+                      "/clear - メッセージを一括削除\n"
+                      "/nuke - チャンネルを初期化\n"
                       "```",
                 inline=False
             )
@@ -258,6 +262,7 @@ class HelpCommands(commands.Cog):
                       "/avatar - アバター画像を表示\n"
                       "/user_info - ユーザー情報を表示\n"
                       "/server_info - サーバー情報を表示\n"
+                      "/ping - BOTの応答速度を表示\n"
                       "```",
                 inline=False
             )
