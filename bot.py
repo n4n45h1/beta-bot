@@ -28,6 +28,7 @@ class Bot(commands.Bot):
             'cogs.moderation_commands',
             'cogs.rolepanel_commands',
             'cogs.stats_commands',
+            'cogs.welcome_commands,
             'cogs.ticket_commands'
         ]
 
