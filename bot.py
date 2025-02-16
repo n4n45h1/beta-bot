@@ -501,5 +501,6 @@ async def kick_player(interaction: discord.Interaction, player: discord.Member):
         f"{player.mention} をゲームからキックしました。",
         ephemeral=True
     )
-
-bot.ru
+if __name__ == "__main__":
+    bot = WerewolfBot()
+    bot.run(os.getenv("DISCORD_TOKEN"))
